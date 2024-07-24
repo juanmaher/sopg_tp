@@ -3,6 +3,7 @@ CC = gcc
 CFLAGS = -std=gnu11 -Wall -pedantic
 
 # Definimos las carpetas
+OUT_DIR = out
 WRITER_DIR = writer
 READER_DIR = reader
 
@@ -19,8 +20,8 @@ WRITER_HEADERS = $(wildcard $(WRITER_DIR)/*.h)
 READER_HEADERS = $(wildcard $(READER_DIR)/*.h)
 
 # Archivos ejecutables
-WRITER_EXEC = writer_program
-READER_EXEC = reader_program
+WRITER_EXEC = $(OUT_DIR)/writer_program
+READER_EXEC = $(OUT_DIR)/reader_program
 
 # Regla para compilar todo
 all: $(WRITER_EXEC) $(READER_EXEC)
