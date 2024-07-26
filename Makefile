@@ -6,6 +6,10 @@ CFLAGS = -std=gnu11 -Wall -pedantic
 OUT_DIR = out
 WRITER_DIR = writer
 READER_DIR = reader
+COMMON_DIR = common
+
+# Directorios de inclusión
+INCLUDE_DIRS = -I$(COMMON_DIR)
 
 # Archivos fuente
 WRITER_SRC = $(wildcard $(WRITER_DIR)/*.c)
@@ -18,6 +22,7 @@ READER_OBJ = $(READER_SRC:.c=.o)
 # Archivos de cabecera
 WRITER_HEADERS = $(wildcard $(WRITER_DIR)/*.h)
 READER_HEADERS = $(wildcard $(READER_DIR)/*.h)
+COMMON_HEADERS = $(wildcard $(COMMON_DIR)/*.h)
 
 # Archivos ejecutables
 WRITER_EXEC = $(OUT_DIR)/writer_program
@@ -41,12 +46,12 @@ $(READER_EXEC): $(READER_OBJ)
 	$(CC) $(CFLAGS) -o $@ $^
 
 # Regla para compilar los archivos .c a .o en writer
-$(WRITER_DIR)/%.o: $(WRITER_DIR)/%.c $(WRITER_HEADERS)
-	$(CC) $(CFLAGS) -c -o $@ $<
+$(WRITER_DIR)/%.o: $(WRITER_DIR)/%.c $(WRITER_HEADERS) $(COMMON_HEADERS)
+	$(CC) $(CFLAGS) $(INCLUDE_DIRS) -c -o $@ $<
 
 # Regla para compilar los archivos .c a .o en reader
-$(READER_DIR)/%.o: $(READER_DIR)/%.c $(READER_HEADERS)
-	$(CC) $(CFLAGS) -c -o $@ $<
+$(READER_DIR)/%.o: $(READER_DIR)/%.c $(READER_HEADERS) $(COMMON_HEADERS)
+	$(CC) $(CFLAGS) $(INCLUDE_DIRS) -c -o $@ $<
 
 # Limpiar archivos objeto y ejecutables
 clean:

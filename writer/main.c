@@ -6,21 +6,43 @@
 #include <errno.h>
 #include <signal.h>
 #include <string.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
+#include "common.h"
 
 #define BUFFER_SIZE 1024
 
-void sigusr1_handler(int sig) {
-    write(STDOUT_FILENO, "SIGUSR1\n", 8);
+static void sigusr1_handler(int sig);
+static void sigusr2_handler(int sig);
+
+volatile sig_atomic_t fifo_opened = FALSE;
+
+static void sigusr1_handler(int sig) {
+    if (TRUE == fifo_opened) {
+        if (-1 == write(STDOUT_FILENO, "SIGUSR1\n", 8)) {
+            perror("write");
+            exit(1);
+        }
+    }
 }
 
-void sigusr2_handler(int sig) {
-    write(STDOUT_FILENO, "SIGUSR2\n", 8);
+static void sigusr2_handler(int sig) {
+    if (TRUE == fifo_opened) {
+        if (-1 == write(STDOUT_FILENO, "SIGUSR2\n", 8)) {
+            perror("write");
+            exit(1);
+        }
+    }
 }
 
 int main(void) {
+    int fd;
     char *s, *start;
     size_t buffer_size = BUFFER_SIZE;
     struct sigaction sa;
+    struct stat st;
 
     sa.sa_handler = sigusr1_handler;
     sa.sa_flags = SA_RESTART;
@@ -42,6 +64,32 @@ int main(void) {
 
     printf("pid: %d\n", getpid());
 
+    if (0 == stat(NAMED_FIFO, &st)) {
+        if (S_ISFIFO(st.st_mode)) {
+            printf("Named FIFO '%s' already exists.\n", NAMED_FIFO);
+        } else {
+            printf("A file named '%s' exists but it is not a FIFO.\n", NAMED_FIFO);
+            exit(1);
+        }
+    } else {
+        if (errno == ENOENT) {
+            if (0 == mkfifo(NAMED_FIFO, 0666)) {
+                printf("Named FIFO '%s' created successfully.\n", NAMED_FIFO);
+            } else {
+                perror("Failed to create named FIFO");
+                exit(1);
+            }
+        } else {
+            perror("stat");
+            exit(1);
+        }
+    }
+
+    puts("Waiting for readers...");
+    fd = open(NAMED_FIFO, O_WRONLY);
+    puts("Enter text (CTRL+D to finish):");
+    fifo_opened = TRUE;
+
     if (NULL == (s = (char *) malloc(sizeof(char) * buffer_size))) {
         perror("malloc");
         exit(1);
@@ -54,7 +102,10 @@ int main(void) {
             switch (*s) {
                 case '\n':
                     *s++ = '\0';
-                    write(STDOUT_FILENO, start, s - start);
+                    if (-1 == write(fd, start, s - start)) {
+                        perror("write");
+                        exit(1);
+                    }
                     memset(start, 0, buffer_size);
                     s = start; // Reset s to the start of the buffer
                     break;
@@ -78,6 +129,8 @@ int main(void) {
     }
 
     free(start);
+    close(fd);
+    unlink(NAMED_FIFO);
 
     return 0;
 }
