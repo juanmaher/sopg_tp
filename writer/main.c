@@ -38,8 +38,8 @@ static void sigusr2_handler(int sig) {
 }
 
 int main(void) {
-    int fd;
-    char *s, *start;
+    int fd = 0;
+    char *s = NULL, *start = NULL;
     size_t buffer_size = BUFFER_SIZE;
     struct sigaction sa;
     struct stat st;
@@ -101,7 +101,8 @@ int main(void) {
             *s = (char) fgetc(stdin);
             switch (*s) {
                 case '\n':
-                    *s++ = '\0';
+                    s++;
+                    *s = '\0';
                     if (-1 == write(fd, start, s - start)) {
                         perror("write");
                         exit(1);
