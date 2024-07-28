@@ -112,6 +112,8 @@ int main(void) {
                     break;
                 case EOF:
                     free(start);
+                    close(fd);
+                    unlink(NAMED_FIFO);
                     return 0;
                 default:
                     s++;

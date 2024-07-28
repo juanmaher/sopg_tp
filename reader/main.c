@@ -10,69 +10,109 @@
 
 #include "common.h"
 
-#define BUFFER_SIZE 1024
-
-int read_data(int fd, char ** buf) {
-    int num = 0, data_read = 0;
-    char *start = NULL;
-    size_t buffer_size = BUFFER_SIZE;
-
-    if (NULL == buf) {
-        perror("null buf");
-        exit(1);
-    }
-
-    start = *buf;
-    while (1) {
-        num = read(fd, *buf, sizeof(char) * BUFFER_SIZE);
-        printf("num: %d\n", num);
-        data_read += num;
-        switch (num) {
-            case -1:
-                perror("read");
-                exit(1);
-            case BUFFER_SIZE:
-                puts("Buffer full");
-                buffer_size *= 2;
-                if (NULL == (start = (void *) realloc(*buf, sizeof(char) * buffer_size))) {
-                    perror("realloc");
-                    exit(1);
-                }
-                *buf = start + (buffer_size / 2);
-                break;
-            default:
-                return data_read;
-        }
-    }
-    return 0;
-}
+#define BUFFER_SIZE 5
+#define DATA_FILE "log.txt"
+#define SIGNALS_FILE "signals.txt"
 
 int main(void) {
     int fd = 0;
-    char *s = NULL;
+    FILE *fdata = NULL;
+    FILE *fsign = NULL;
+    char *s = NULL, *start = NULL;
+    ssize_t num = 0, data_read = 0;
+    ssize_t buffer_size = BUFFER_SIZE;
 
+    if (NULL == (fdata = fopen(DATA_FILE, "w"))) {
+        perror("fopen");
+        exit(1);
+    }
+
+    if (NULL == (fsign = fopen(SIGNALS_FILE, "w"))) {
+        perror("fopen");
+        exit(1);
+    }
+
+    // Open FIFO
     if (-1 == (fd = open(NAMED_FIFO, O_RDONLY))) {
         perror("open");
         exit(1);
     }
 
+    // Allocate memory
     if (NULL == (s = (void *) malloc(sizeof(char) * BUFFER_SIZE))) {
         perror("malloc");
         exit(1);
     }
 
+    start = s;
+
     while (1) {
-        if (read_data(fd, &s)) {
-            puts("Read done");
-            if (-1 == write(STDOUT_FILENO, s, strlen(s))) {
-                perror("write");
+        // Read new data
+        while (1) {
+            if (-1 == (num = read(fd, s + data_read, buffer_size))) {
+                perror("read");
+                free(s);
+                close(fd);
+                fclose(fdata);
+                fclose(fsign);
                 exit(1);
             }
-            memset(s, 0, strlen(s));
+
+            // EOF
+            if (0 == num) {
+                free(s);
+                close(fd);
+                fclose(fdata);
+                fclose(fsign);
+                return 0;
+            }
+
+            data_read += num;
+
+            if (num >= buffer_size) {
+                buffer_size *= 2;
+                if (NULL == (start = (char *) realloc(start, buffer_size))) {
+                    perror("realloc");
+                    exit(1);
+                }
+                s = start;
+            }
+
+            if ('\n' == s[data_read-1]) {
+                break;
+            }
         }
+
+        // Store data
+        if (strncmp(s, "DATA:", 5) == 0) {
+            if (-1 == fprintf(fdata, "%s", s)) {
+                perror("fprintf");
+                free(s);
+                close(fd);
+                fclose(fdata);
+                fclose(fsign);
+                exit(1);
+            }
+        } else if (strncmp(s, "SIGN:", 5) == 0) {
+            if (-1 == fprintf(fsign, "%s", s)) {
+                perror("fprintf");
+                free(s);
+                close(fd);
+                fclose(fdata);
+                fclose(fsign);
+                exit(1);
+            }
+        }
+
+        // Reset buffer
+        memset(start, 0, buffer_size);
+        s = start;
+        data_read = 0;
     }
 
     free(s);
     close(fd);
+    fclose(fdata);
+    fclose(fsign);
     return 0;
 }
