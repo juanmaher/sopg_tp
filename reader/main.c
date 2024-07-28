@@ -11,8 +11,8 @@
 #include "common.h"
 
 #define BUFFER_SIZE 5
-#define DATA_FILE "log.txt"
-#define SIGNALS_FILE "signals.txt"
+#define DATA_FILE "out/log.txt"
+#define SIGNALS_FILE "out/signals.txt"
 
 int main(void) {
     int fd = 0;

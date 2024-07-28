@@ -18,10 +18,11 @@ static void sigusr1_handler(int sig);
 static void sigusr2_handler(int sig);
 
 volatile sig_atomic_t fifo_opened = FALSE;
+volatile sig_atomic_t fd;
 
 static void sigusr1_handler(int sig) {
     if (TRUE == fifo_opened) {
-        if (-1 == write(STDOUT_FILENO, "SIGUSR1\n", 8)) {
+        if (-1 == write(fd, "SIGN:1\n", 8)) {
             perror("write");
             exit(1);
         }
@@ -30,7 +31,7 @@ static void sigusr1_handler(int sig) {
 
 static void sigusr2_handler(int sig) {
     if (TRUE == fifo_opened) {
-        if (-1 == write(STDOUT_FILENO, "SIGUSR2\n", 8)) {
+        if (-1 == write(fd, "SIGN:2\n", 8)) {
             perror("write");
             exit(1);
         }
@@ -38,7 +39,6 @@ static void sigusr2_handler(int sig) {
 }
 
 int main(void) {
-    int fd = 0;
     char *s = NULL, *start = NULL;
     size_t buffer_size = BUFFER_SIZE;
     struct sigaction sa;
