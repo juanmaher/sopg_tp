@@ -10,7 +10,7 @@
 
 #include "common.h"
 
-#define BUFFER_SIZE 5
+#define BUFFER_SIZE 1024
 #define DATA_FILE "out/log.txt"
 #define SIGNALS_FILE "out/signals.txt"
 
@@ -49,7 +49,8 @@ int main(void) {
     while (1) {
         // Read new data
         while (1) {
-            if (-1 == (num = read(fd, s + data_read, buffer_size))) {
+            num = read(fd, s + data_read, buffer_size);
+            if (-1 == num) {
                 perror("read");
                 free(s);
                 close(fd);
@@ -69,18 +70,15 @@ int main(void) {
 
             data_read += num;
 
-            if (num >= buffer_size) {
-                buffer_size *= 2;
-                if (NULL == (start = (char *) realloc(start, buffer_size))) {
-                    perror("realloc");
-                    exit(1);
-                }
-                s = start;
-            }
-
-            if ('\n' == s[data_read-1]) {
+            if (num < buffer_size)
                 break;
+
+            buffer_size *= 2;
+            if (NULL == (start = (char *) realloc(start, buffer_size))) {
+                perror("realloc");
+                exit(1);
             }
+            s = start;
         }
 
         // Store data

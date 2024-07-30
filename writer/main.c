@@ -14,38 +14,28 @@
 
 #define BUFFER_SIZE 1024
 
-static void sigusr1_handler(int sig);
-static void sigusr2_handler(int sig);
+static void sigusr_handler(int sig);
 
-volatile sig_atomic_t fifo_opened = FALSE;
-volatile sig_atomic_t fd;
+static const char data_header[] = "DATA:";
+static const char sigusr1_str[] = "SIGN:SIGUSR1\n";
+static const char sigusr2_str[] = "SIGN:SIGUSR2\n";
 
-static void sigusr1_handler(int sig) {
-    if (TRUE == fifo_opened) {
-        if (-1 == write(fd, "SIGN:1\n", 8)) {
-            perror("write");
-            exit(1);
-        }
-    }
-}
+volatile sig_atomic_t sigusr_flag = 0;
 
-static void sigusr2_handler(int sig) {
-    if (TRUE == fifo_opened) {
-        if (-1 == write(fd, "SIGN:2\n", 8)) {
-            perror("write");
-            exit(1);
-        }
-    }
+static void sigusr_handler(int sig) {
+    if (sig == SIGUSR1 || sig == SIGUSR2)
+        sigusr_flag = sig;
 }
 
 int main(void) {
+    int fd = 0;
     char *s = NULL, *start = NULL;
     size_t buffer_size = BUFFER_SIZE;
     struct sigaction sa;
     struct stat st;
 
-    sa.sa_handler = sigusr1_handler;
-    sa.sa_flags = SA_RESTART;
+    sa.sa_handler = sigusr_handler;
+    sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
 
     if (-1 == sigaction(SIGUSR1, &sa, NULL)) {
@@ -53,8 +43,8 @@ int main(void) {
         exit(1);
     }
 
-    sa.sa_handler = sigusr2_handler;
-    sa.sa_flags = SA_RESTART;
+    sa.sa_handler = sigusr_handler;
+    sa.sa_flags = 0;
     sigemptyset(&sa.sa_mask);
 
     if (-1 == sigaction(SIGUSR2, &sa, NULL)) {
@@ -88,7 +78,6 @@ int main(void) {
     puts("Waiting for readers...");
     fd = open(NAMED_FIFO, O_WRONLY);
     puts("Enter text (CTRL+D to finish):");
-    fifo_opened = TRUE;
 
     if (NULL == (s = (char *) malloc(sizeof(char) * buffer_size))) {
         perror("malloc");
@@ -97,13 +86,48 @@ int main(void) {
 
     while (1) {
         start = s;
+        if (NULL == strcat(s, data_header)) {
+            free(start);
+            close(fd);
+            perror("strcat");
+            exit(1);
+        }
+        s += strlen(data_header);
         while (1) {
             *s = (char) fgetc(stdin);
+
+            puts("Me desbloquee");
+
+            if (sigusr_flag) {
+                puts("sigusr_flag != 0");
+                if (sigusr_flag == SIGUSR1) {
+                    puts("sigusr_flag == SIGUSR1");
+                    if (-1 == write(fd, sigusr1_str, sizeof(sigusr1_str))) {
+                        free(start);
+                        close(fd);
+                        perror("write");
+                        exit(1);
+                    }
+                } else if (sigusr_flag == SIGUSR2) {
+                    puts("sigusr_flag == SIGUSR2");
+                    if (-1 == write(fd, sigusr2_str, sizeof(sigusr2_str))) {
+                        free(start);
+                        close(fd);
+                        perror("write");
+                        exit(1);
+                    }
+                }
+                sigusr_flag = 0;
+                continue;
+            }
+
             switch (*s) {
                 case '\n':
                     s++;
                     *s = '\0';
                     if (-1 == write(fd, start, s - start)) {
+                        free(start);
+                        close(fd);
                         perror("write");
                         exit(1);
                     }
