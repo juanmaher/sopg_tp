@@ -96,12 +96,8 @@ int main(void) {
         while (1) {
             *s = (char) fgetc(stdin);
 
-            puts("Me desbloquee");
-
             if (sigusr_flag) {
-                puts("sigusr_flag != 0");
                 if (sigusr_flag == SIGUSR1) {
-                    puts("sigusr_flag == SIGUSR1");
                     if (-1 == write(fd, sigusr1_str, sizeof(sigusr1_str))) {
                         free(start);
                         close(fd);
@@ -109,7 +105,6 @@ int main(void) {
                         exit(1);
                     }
                 } else if (sigusr_flag == SIGUSR2) {
-                    puts("sigusr_flag == SIGUSR2");
                     if (-1 == write(fd, sigusr2_str, sizeof(sigusr2_str))) {
                         free(start);
                         close(fd);
