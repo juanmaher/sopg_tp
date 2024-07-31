@@ -26,7 +26,7 @@ En cualquier momento, además, el proceso writer puede detectar el EOF en la ent
 2. Iniciar el proceso reader: `./out/reader_program`
 3. Enviar desde STDIN en la terminal que esté ejecutando el writer
 4. Terminar la ejecución con `CTRL+D`
-5. Ver resultados en `out/log.txt` y en `signals.txt`
+5. Ver resultados en `out/log.txt` y en `out/signals.txt`
 
 
 ## Comando para mandar señales
