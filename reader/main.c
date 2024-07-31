@@ -1,33 +1,14 @@
-#define _GNU_SOURCE
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <unistd.h>
-
-#include "common.h"
-
-#define BUFFER_SIZE 5
-#define DATA_FILE "out/log.txt"
-#define SIGNALS_FILE "out/signals.txt"
+#include "main.h"
 
 int main(void) {
     int fd = 0;
-    FILE *fdata = NULL;
-    FILE *fsign = NULL;
+    FILE *fdata = NULL, *fsign = NULL;
     char *buf = NULL;
     char start[BUFFER_SIZE] = {0};
     ssize_t num = 0, data_read = 0;
 
-    if (NULL == (fdata = fopen(DATA_FILE, "w"))) {
-        perror("fopen");
-        exit(1);
-    }
-
-    if (NULL == (fsign = fopen(SIGNALS_FILE, "w"))) {
+    // Open output files
+    if (NULL == (fdata = fopen(DATA_FILE, "w")) || NULL == (fsign = fopen(SIGNALS_FILE, "w"))) {
         perror("fopen");
         exit(1);
     }
@@ -38,61 +19,61 @@ int main(void) {
         exit(1);
     }
 
+    // Main loop to read new data and store it
     while (1) {
         // Read new data
         puts("Reading new data");
         while (1) {
-            num = read(fd, start, BUFFER_SIZE);
-            if (num == -1 || num == 0) {
+            // Check if we have an error
+            if (-1 == (num = read(fd, start, BUFFER_SIZE))) {
                 perror("read");
-                free(buf);
-                close(fd);
-                fclose(fdata);
-                fclose(fsign);
-                exit(1);
+                goto ret;
             }
-            printf("num: %ld\n", num);
+
+            // Check if we read EOF
+            if (0 == num) {
+                puts("EOF reached, exiting...");
+                goto ret;
+            }
+
+            // Add new data in the buffer
             char * tmp = realloc(buf, data_read + num);
             if (NULL == tmp) {
                 perror("realloc");
-                free(buf);
-                close(fd);
-                exit(1);
+                goto ret;
             }
             buf = tmp;
             memcpy(buf + data_read, start, num);
             data_read += num;
-            if (buf[data_read-1] == '\n' || buf[data_read-2] == '\n') {
+
+            // Check if the message is finished
+            if (memchr(buf, '\n', data_read)) {
                 break;
             }
         }
-        data_read = 0;
 
-        // Store data
-        if (strncmp(buf, "DATA:", 5) == 0) {
-            if (-1 == fprintf(fdata, "%s", buf+5)) {
+        // Store data in output files
+        if (0 == strncmp(buf, DATA_HEADER, strlen(DATA_HEADER))) {
+            if (-1 == fprintf(fdata, "%s", buf + strlen(DATA_HEADER))) {
                 perror("fprintf");
-                free(buf);
-                close(fd);
-                fclose(fdata);
-                fclose(fsign);
-                exit(1);
+                goto ret;
             }
-        } else if (strncmp(buf, "SIGN:", 5) == 0) {
-            if (-1 == fprintf(fsign, "%s", buf+5)) {
+        } else if (0 == strncmp(buf, SIGN_HEADER, strlen(SIGN_HEADER))) {
+            if (-1 == fprintf(fsign, "%s", buf + strlen(SIGN_HEADER))) {
                 perror("fprintf");
-                free(buf);
-                close(fd);
-                fclose(fdata);
-                fclose(fsign);
-                exit(1);
+                goto ret;
             }
         }
+
+        // Clear buffer
+        memset(buf, 0, data_read);
+        data_read = 0;
     }
 
+ret:
     free(buf);
     close(fd);
     fclose(fdata);
     fclose(fsign);
-    return 0;
+    return errno ? errno : 0;
 }

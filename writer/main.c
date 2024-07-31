@@ -1,158 +1,201 @@
-#define _GNU_SOURCE
+#include "main.h"
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <errno.h>
-#include <signal.h>
-#include <string.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
+// Flag to indicate if we should send SIGUSR1 or SIGUSR2
+volatile sig_atomic_t __sigusr_flag = 0;
 
-#include "common.h"
-
-#define BUFFER_SIZE 1024
-
-static void sigusr_handler(int sig);
-
-static const char data_header[] = "DATA:";
-static const char sigusr1_str[] = "SIGN:SIGUSR1\n";
-static const char sigusr2_str[] = "SIGN:SIGUSR2\n";
-
-volatile sig_atomic_t sigusr_flag = 0;
-
-static void sigusr_handler(int sig) {
+/**
+ * @brief Signal handler for SIGUSR1 and SIGUSR2
+ * 
+ * @param sig Signal number
+ */
+static void __sigusr_handler(int sig) {
     if (sig == SIGUSR1 || sig == SIGUSR2)
-        sigusr_flag = sig;
+        __sigusr_flag = sig;
+}
+
+/**
+ * @brief Send signal message
+ * 
+ * @param fd File descriptor
+ * @param content Content of the message
+ */
+void __send_signal_message(int fd, const char *content) {
+    char * signal_msg = NULL;
+    size_t header_len = strlen(SIGN_HEADER);
+    size_t content_len = strlen(content);
+
+    signal_msg = realloc(signal_msg, header_len + content_len + 1);
+    if (NULL == signal_msg) {
+        perror("realloc");
+        exit(1);
+    }
+
+    // Create signal message with the header and the content
+    memcpy(signal_msg, SIGN_HEADER, header_len);
+    memcpy(signal_msg + header_len, content, content_len);
+    signal_msg[header_len + content_len] = '\0';
+
+    // Send signal message through the FIFO
+    if (-1 == write(fd, signal_msg, header_len + content_len)) {
+        perror("write");
+        free(signal_msg);
+        exit(1);
+    }
+
+    free(signal_msg);
+}
+
+/**
+ * @brief Send signal
+ * 
+ * @param fd File descriptor
+ * @param sig Signal number
+ */
+static void __send_signal(int fd, int sig) {
+    if (sig == SIGUSR1) {
+        __send_signal_message(fd, SIGNAL_1_CONTENT);
+    } else if (sig == SIGUSR2) {
+        __send_signal_message(fd, SIGNAL_2_CONTENT);
+    } else {
+        fprintf(stderr, "Unknown signal: %d\n", sig);
+        exit(1);
+    }
+}
+
+/**
+ * @brief Initialize signaling
+ */
+static void __init_signaling() {
+    struct sigaction sa;
+
+    sa.sa_handler = __sigusr_handler;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+    if (-1 == sigaction(SIGUSR1, &sa, NULL) || -1 == sigaction(SIGUSR2, &sa, NULL)) {
+        perror("sigaction");
+        exit(1);
+    }
+
+    sa.sa_handler = SIG_IGN;
+    sa.sa_flags = 0;
+    sigemptyset(&sa.sa_mask);
+
+    if (-1 == sigaction(SIGPIPE, &sa, NULL)) {
+        perror("sigaction");
+        exit(1);
+    }
+}
+
+static void __create_fifo() {
+    struct stat st;
+
+    // Check if FIFO exists
+    if (0 != stat(NAMED_FIFO, &st)) {
+        // Create FIFO
+        if (0 != mkfifo(NAMED_FIFO, 0666)) {
+            perror("Failed to create named FIFO");
+            exit(1);
+        }
+    }
 }
 
 int main(void) {
     int fd = 0;
-    char *s = NULL, *start = NULL;
-    size_t buffer_size = BUFFER_SIZE;
-    struct sigaction sa;
-    struct stat st;
+    char *buf = NULL;
+    char start[BUFFER_SIZE] = {0};
+    ssize_t num = 0, data_read = 0, bytes_written = 0;
 
-    sa.sa_handler = sigusr_handler;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-
-    if (-1 == sigaction(SIGUSR1, &sa, NULL)) {
-        perror("sigaction");
-        exit(1);
-    }
-
-    sa.sa_handler = sigusr_handler;
-    sa.sa_flags = 0;
-    sigemptyset(&sa.sa_mask);
-
-    if (-1 == sigaction(SIGUSR2, &sa, NULL)) {
-        perror("sigaction");
-        exit(1);
-    }
+    __init_signaling();
 
     printf("pid: %d\n", getpid());
 
-    if (0 == stat(NAMED_FIFO, &st)) {
-        if (S_ISFIFO(st.st_mode)) {
-            printf("Named FIFO '%s' already exists.\n", NAMED_FIFO);
-        } else {
-            printf("A file named '%s' exists but it is not a FIFO.\n", NAMED_FIFO);
-            exit(1);
-        }
-    } else {
-        if (errno == ENOENT) {
-            if (0 == mkfifo(NAMED_FIFO, 0666)) {
-                printf("Named FIFO '%s' created successfully.\n", NAMED_FIFO);
-            } else {
-                perror("Failed to create named FIFO");
-                exit(1);
-            }
-        } else {
-            perror("stat");
-            exit(1);
-        }
-    }
+    __create_fifo();
 
     puts("Waiting for readers...");
-    fd = open(NAMED_FIFO, O_WRONLY);
-    puts("Enter text (CTRL+D to finish):");
 
-    if (NULL == (s = (char *) malloc(sizeof(char) * buffer_size))) {
-        perror("malloc");
+    // Open FIFO
+    if (-1 == (fd = open(NAMED_FIFO, O_WRONLY))) {
+        perror("open");
+        unlink(NAMED_FIFO);
         exit(1);
     }
 
-    while (1) {
-        start = s;
-        if (NULL == strcat(s, data_header)) {
-            free(start);
-            close(fd);
-            perror("strcat");
-            exit(1);
-        }
-        s += strlen(data_header);
-        while (1) {
-            *s = (char) fgetc(stdin);
+    puts("Enter text (CTRL+D to finish or ENTER to send):");
 
-            if (sigusr_flag) {
-                if (sigusr_flag == SIGUSR1) {
-                    if (-1 == write(fd, sigusr1_str, sizeof(sigusr1_str))) {
-                        free(start);
-                        close(fd);
-                        perror("write");
-                        exit(1);
-                    }
-                } else if (sigusr_flag == SIGUSR2) {
-                    if (-1 == write(fd, sigusr2_str, sizeof(sigusr2_str))) {
-                        free(start);
-                        close(fd);
-                        perror("write");
-                        exit(1);
-                    }
-                }
-                sigusr_flag = 0;
+    // Allocate memory for the buffer
+    if (NULL == (buf = (char *) malloc(sizeof(char) * strlen(DATA_HEADER)))) {
+        perror("malloc");
+        close(fd);
+        unlink(NAMED_FIFO);
+        exit(1);
+    }
+
+    // Main loop to read new data from stdin and send it through the FIFO
+    while (1) {
+        // Add header in the buffer
+        memcpy(buf, DATA_HEADER, sizeof(char) * strlen(DATA_HEADER));
+        data_read += sizeof(char) * strlen(DATA_HEADER);
+
+        // Read new data
+        puts("Send a new message");
+
+        // Read new data from stdin
+        while (1) {
+            num = read(STDIN_FILENO, start, BUFFER_SIZE);
+
+            // Check if we have an error
+            if (-1 == num && errno != EINTR) {
+                perror("read");
+                goto ret;
+            }
+
+            // Check if we should send SIGUSR1 or SIGUSR2
+            if (0 != __sigusr_flag) {
+                __send_signal(fd, __sigusr_flag);
+                __sigusr_flag = 0;
                 continue;
             }
 
-            switch (*s) {
-                case '\n':
-                    s++;
-                    *s = '\0';
-                    if (-1 == write(fd, start, s - start)) {
-                        free(start);
-                        close(fd);
-                        perror("write");
-                        exit(1);
-                    }
-                    memset(start, 0, buffer_size);
-                    s = start; // Reset s to the start of the buffer
-                    break;
-                case EOF:
-                    free(start);
-                    close(fd);
-                    unlink(NAMED_FIFO);
-                    return 0;
-                default:
-                    s++;
-                    if (s - start >= buffer_size - 1) { // Reallocate if needed
-                        buffer_size *= 2;
-                        if (NULL == (start = (char *) realloc(start, buffer_size))) {
-                            perror("realloc");
-                            exit(1);
-                        }
-                        s = start + (buffer_size / 2); // Adjust s to the new position
-                    }
-                    continue;
+            // Check if we read EOF
+            if (0 == num) {
+                puts("EOF reached, exiting...");
+                goto ret;
             }
-            break;
+
+            // Add new data in the buffer
+            char * tmp = realloc(buf, data_read + num);
+            if (NULL == tmp) {
+                perror("realloc");
+                goto ret;
+            }
+            buf = tmp;
+            memcpy(buf + data_read, start, num);
+            data_read += num;
+
+            // Check if the message is finished
+            if (memchr(buf, '\n', data_read)) {
+                break;
+            }
         }
+
+        // Send new data through the FIFO
+        bytes_written = write(fd, buf, data_read);
+        if (bytes_written == -1) {
+            perror("write");
+            if (errno == EPIPE) {
+                fprintf(stderr, "No readers on the other side of the FIFO (EPIPE)\n");
+            }
+            goto ret;
+        }
+
+        // Clear buffer
+        data_read = 0;
     }
 
-    free(start);
+ret:
+    free(buf);
     close(fd);
     unlink(NAMED_FIFO);
-
-    return 0;
+    return errno ? errno : 0;
 }
