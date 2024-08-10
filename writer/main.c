@@ -19,30 +19,12 @@ static void __sigusr_handler(int sig) {
  * @param fd File descriptor
  * @param content Content of the message
  */
-void __send_signal_message(int fd, const char *content) {
-    char * signal_msg = NULL;
-    size_t header_len = strlen(SIGN_HEADER);
-    size_t content_len = strlen(content);
-
-    signal_msg = realloc(signal_msg, header_len + content_len + 1);
-    if (NULL == signal_msg) {
-        perror("realloc");
-        exit(1);
-    }
-
-    // Create signal message with the header and the content
-    memcpy(signal_msg, SIGN_HEADER, header_len);
-    memcpy(signal_msg + header_len, content, content_len);
-    signal_msg[header_len + content_len] = '\0';
-
+void __send_signal_message(int fd, const char * content) {
     // Send signal message through the FIFO
-    if (-1 == write(fd, signal_msg, header_len + content_len)) {
+    if (-1 == write(fd, content, strlen(content) * sizeof(char))) {
         perror("write");
-        free(signal_msg);
         exit(1);
     }
-
-    free(signal_msg);
 }
 
 /**
@@ -53,9 +35,9 @@ void __send_signal_message(int fd, const char *content) {
  */
 static void __send_signal(int fd, int sig) {
     if (sig == SIGUSR1) {
-        __send_signal_message(fd, SIGNAL_1_CONTENT);
+        __send_signal_message(fd, SIGNAL_1_MSG);
     } else if (sig == SIGUSR2) {
-        __send_signal_message(fd, SIGNAL_2_CONTENT);
+        __send_signal_message(fd, SIGNAL_2_MSG);
     } else {
         fprintf(stderr, "Unknown signal: %d\n", sig);
         exit(1);

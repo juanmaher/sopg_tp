@@ -6,6 +6,6 @@
 #define DATA_HEADER "DATA:"
 #define SIGN_HEADER "SIGN:"
 
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 5
 
 #endif // __COMMON_H__
