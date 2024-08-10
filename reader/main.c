@@ -16,6 +16,8 @@ int main(void) {
     // Open FIFO
     if (-1 == (fd = open(NAMED_FIFO, O_RDONLY))) {
         perror("open");
+        fclose(fdata);
+        fclose(fsign);
         exit(1);
     }
 
