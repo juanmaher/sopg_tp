@@ -56,13 +56,13 @@ int main(void) {
 
         // Store data in output files
         if (0 == strncmp(buf, DATA_HEADER, strlen(DATA_HEADER))) {
-            if (-1 == fprintf(fdata, "%s", buf + strlen(DATA_HEADER))) {
-                perror("fprintf");
+            if (-1 == fwrite(buf + strlen(DATA_HEADER), data_read - strlen(DATA_HEADER), 1, fdata)) {
+                perror("fwrite");
                 goto ret;
             }
         } else if (0 == strncmp(buf, SIGN_HEADER, strlen(SIGN_HEADER))) {
-            if (-1 == fprintf(fsign, "%s", buf + strlen(SIGN_HEADER))) {
-                perror("fprintf");
+            if (-1 == fwrite(buf + strlen(SIGN_HEADER), data_read - strlen(SIGN_HEADER), 1, fsign)) {
+                perror("fwrite");
                 goto ret;
             }
         }
